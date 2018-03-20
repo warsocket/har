@@ -33,7 +33,7 @@ class Tarball():
 
 				else: #this should be a file header
 					sectortype.append("header")
-					size = int(sector.filesize, 8)
+					size = int(sector._filesize, 8)
 					datacountdown = size / 512
 					if size % 512: datacountdown += 1
 
@@ -92,43 +92,46 @@ class Tarball():
 	def dumps(self):
 		return "".join( map(str, self.sectors) )
 
+	def calculate_checksums(self): #calculate correct checksum for the whole archive
+		map(lambda sector: sector[0].calculate_checksum(), self)
+
 
 
 class Tarsector():
 	def __mkblob(self):
-		assert(len(self.filename) == 100)
-		assert(len(self.filemode) == 8)
-		assert(len(self.userid) == 8)
-		assert(len(self.groupid) == 8)
-		assert(len(self.filesize) == 12)
-		assert(len(self.timestamp) == 12)
-		assert(len(self.checksum) == 8)
-		assert(len(self.linkindicator) == 1)
-		assert(len(self.linkedfilename) == 100)
+		assert(len(self._filename) == 100)
+		assert(len(self._filemode) == 8)
+		assert(len(self._userid) == 8)
+		assert(len(self._groupid) == 8)
+		assert(len(self._filesize) == 12)
+		assert(len(self._timestamp) == 12)
+		assert(len(self._checksum) == 8)
+		assert(len(self._linkindicator) == 1)
+		assert(len(self._linkedfilename) == 100)
 
-		return extend("\x00", 512, "".join([self.filename, self.filemode, self.userid, self.groupid, self.filesize, self.timestamp, self.checksum, self.linkindicator, self.linkedfilename]) )
+		return extend("\x00", 512, "".join([self._filename, self._filemode, self._userid, self._groupid, self._filesize, self._timestamp, self._checksum, self._linkindicator, self._linkedfilename]) )
 
-	def __init__(self, data=["\x00"]*512):
+	def __init__(self, data="\x00"*512):
 		assert(len(data) == 512)
 
-		self.filename = data[0:100]
-		self.filemode = data[100:108] #ends 00
-		self.userid = data[108:116] #ends 00
-		self.groupid = data[116:124] #ends 00
-		self.filesize = data[124:136] #ends 00
-		self.timestamp = data[136:148] #ends 00
-		self.checksum = data[148:156] #ends 0020
-		self.linkindicator = data[156:157] #single octal digit
-		self.linkedfilename = data[157:257]
+		self._filename = data[0:100]
+		self._filemode = data[100:108] #ends 00
+		self._userid = data[108:116] #ends 00
+		self._groupid = data[116:124] #ends 00
+		self._filesize = data[124:136] #ends 00
+		self._timestamp = data[136:148] #ends 00
+		self._checksum = data[148:156] #ends 0020
+		self._linkindicator = data[156:157] #single octal digit
+		self._linkedfilename = data[157:257]
 
 	def __str__(self):
 		return self.__mkblob()		
 
 	def calculate_checksum(self):
-		self.checksum = "\x00"*8
+		self._checksum = "\x00"*8
 		blob = self.__mkblob()
 		checksum = oct(0x100 + sum(map(ord, blob)))# 0x100 is needed somehow
-		self.checksum = extend("0", 6, checksum, True) + "\x00\x20"
+		self._checksum = extend("0", 6, checksum, True) + "\x00\x20"
 
 	@staticmethod
 	def num2tar(num, length):
@@ -140,3 +143,51 @@ class Tarsector():
 
 	def ispadding(self):
 		return not bool(sum(map(ord, str(self.__mkblob()))))
+
+	#now, convenience methods for getters and setters
+	def __filename(self, attrname, name=None):
+		if name != None: #set
+			self.__dict__[attrname] = Tarsector.str2tar(name, 100)
+		else: #set
+			return self.__dict__[attrname].split("\x00", 1)[0]
+
+	def __num(self, attrname, size, value=None):
+		if value != None: #set
+			self.__dict__[attrname] = Tarsector.num2tar(value, size)
+		else: #get
+			return int(self.__dict__[attrname][:-1], 8)
+
+	#now getters / setters
+	def filename(self, name=None):
+		return self.__filename("_filename", name)
+
+	def filemode(self, mode=None):
+		return self.__num("_filemode", 8 , mode)
+
+	def userid(self, mode=None):
+		return self.__num("_userid", 8 , mode)
+
+	def groupid(self, mode=None):
+		return self.__num("_groupid", 8 , mode)
+
+	def filesize(self, mode=None):
+		return self.__num("_filesize", 12 , mode)
+
+	def timestamp(self, mode=None):
+		return self.__num("_timestamp", 12 , mode)
+
+	def checksum(self, checksum=None):
+		if checksum != None:
+			print extend("0", 6, oct(checksum), True) + "\x00\x20"
+			self._checksum = extend("0", 6, oct(checksum), True) + "\x00\x20"
+		else:
+			return int(self._checksum[:-2], 8)
+
+	def linkindicator(self, mode=None):
+		if mode != None:
+			self._linkindicator = oct(mode)[-1]
+		else:
+			return int(self._linkindicator, 8)
+
+	def linkedfilename(self, name=None):
+		return self.__filename("_linkedfilename", name)
